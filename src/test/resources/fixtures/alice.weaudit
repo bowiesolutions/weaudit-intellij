@@ -1,0 +1,116 @@
+{
+  "treeEntries": [
+    {
+      "label": "Unchecked return value in transfer()",
+      "entryType": 0,
+      "author": "alice",
+      "locations": [
+        {
+          "path": "src/Token.sol",
+          "startLine": 87,
+          "endLine": 92,
+          "label": "",
+          "description": "transfer() return value not checked"
+        }
+      ],
+      "details": {
+        "title": "Unchecked Return Value",
+        "severity": "High",
+        "difficulty": "Low",
+        "type": "Data Validation",
+        "description": "The `transfer()` call on line 88 does not check the return value.",
+        "exploit": "An attacker can craft a malicious ERC-20 token that returns false from transfer() without reverting, allowing state corruption.",
+        "recommendation": "Use `require(token.transfer(...))` or OpenZeppelin's `SafeERC20.safeTransfer`."
+      },
+      "resolved": false
+    },
+    {
+      "label": "TODO: verify nonce wrapping",
+      "entryType": 1,
+      "author": "alice",
+      "locations": [
+        {
+          "path": "src/Nonce.sol",
+          "startLine": 14,
+          "endLine": 14,
+          "label": "",
+          "description": ""
+        }
+      ],
+      "resolved": false
+    },
+    {
+      "label": "Multi-region: initialization sequence",
+      "entryType": 0,
+      "author": "alice",
+      "locations": [
+        {
+          "path": "src/Init.sol",
+          "startLine": 10,
+          "endLine": 20,
+          "label": "Constructor",
+          "description": "First init step"
+        },
+        {
+          "path": "src/Init.sol",
+          "startLine": 55,
+          "endLine": 68,
+          "label": "initialize()",
+          "description": "Second init step — order-dependent"
+        }
+      ],
+      "details": {
+        "title": "Initialization Order Dependency",
+        "severity": "Medium",
+        "difficulty": "Medium",
+        "type": "Access Control",
+        "description": "",
+        "exploit": "",
+        "recommendation": ""
+      },
+      "resolved": false
+    },
+    {
+      "label": "Confirmed safe — no issue",
+      "entryType": 0,
+      "author": "alice",
+      "locations": [
+        {
+          "path": "src/Safe.sol",
+          "startLine": 1,
+          "endLine": 5,
+          "label": "",
+          "description": ""
+        }
+      ],
+      "details": {
+        "title": "",
+        "severity": "Informational",
+        "difficulty": "Low",
+        "type": "",
+        "description": "Reviewed and confirmed safe.",
+        "exploit": "",
+        "recommendation": ""
+      },
+      "resolved": true
+    }
+  ],
+  "auditedFiles": [
+    { "path": "src/Safe.sol" },
+    { "path": "src/README.md" }
+  ],
+  "partiallyAuditedFiles": [
+    {
+      "path": "src/Token.sol",
+      "regions": [
+        {
+          "path": "src/Token.sol",
+          "startLine": 0,
+          "endLine": 86,
+          "label": "",
+          "description": "Header and imports reviewed"
+        }
+      ]
+    }
+  ]
+}

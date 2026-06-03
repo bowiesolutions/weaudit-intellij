@@ -1,5 +1,6 @@
 # Compiled class file
 *.class
+build
 
 # Log file
 *.log
@@ -24,4 +25,14 @@ hs_err_pid*
 replay_pid*
 
 # Kotlin Gradle plugin data, see https://kotlinlang.org/docs/whatsnew20.html#new-directory-for-kotlin-data-in-gradle-projects
+.gradle
+.kotlin
 .kotlin/
+
+# Integrated Development Environments
+.idea
+.intellijPlatform
+.run
+
+# Agent files
+.ollamassist

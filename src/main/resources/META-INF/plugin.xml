@@ -1,0 +1,375 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <id>com.bowiesolutions.weaudit-intellij</id>
+
+    <name>weAudit</name>
+
+    <vendor url="https://www.bowiesolutions.com">Bowie Solutions</vendor>
+
+    <description><![CDATA[
+        <b>weAudit</b> is a collaborative code-review and security audit tool for IntelliJ-based IDEs.
+        <br/><br/>
+        <b>Features:</b>
+        <ul>
+            <li>Bookmark code regions as <b>Findings</b> or <b>Notes</b> with colored highlights</li>
+            <li>Structured finding details: severity, difficulty, type, description, exploit scenario, recommendation</li>
+            <li>Mark files and regions as <b>reviewed</b> with visual indicators</li>
+            <li>Multi-region findings spanning multiple files</li>
+            <li>Resolve findings and track them in a separate Resolved panel</li>
+            <li>Edit finding boundaries line-by-line with inlay hint controls</li>
+            <li>Export findings to <b>Markdown</b> reports</li>
+            <li>Copy <b>permanent GitHub/GitLab links</b> to findings</li>
+            <li>Create pre-filled <b>GitHub/GitLab issues</b> from findings</li>
+            <li>Collaborate with co-auditors sharing the same <code>.weaudit</code> files</li>
+            <li>Daily audit log tracking reviewed files</li>
+            <li>Project View badges showing audit status per file</li>
+            <li>Full compatibility with the <a href="https://github.com/trailofbits/vscode-weaudit">VS Code weAudit extension</a></li>
+        </ul>
+        <br/>
+        IntelliJ port of <a href="https://github.com/trailofbits/vscode-weaudit">vscode-weaudit</a> (GPL-3.0).
+        Copyright of the original work remains with Trail of Bits.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.kotlin</depends>
+    <depends>org.intellij.plugins.markdown</depends>
+    <depends optional="true" config-file="git4idea-integration.xml">Git4Idea</depends>
+
+    <!-- Declare compatibility with Kotlin K2 mode (required for IntelliJ 2025.1+) -->
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <supportsKotlinPluginMode supportsK2="true"/>
+    </extensions>
+
+    <extensions defaultExtensionNs="com.intellij">
+
+        <!-- ── Services ─────────────────────────────────────────────────── -->
+
+        <!-- Application-level settings (username, colors, git config) -->
+        <applicationService
+                serviceImplementation="com.bowiesolutions.weaudit.settings.WeAuditSettingsState"/>
+
+        <!-- Project-level store: in-memory state + .weaudit file I/O -->
+        <projectService
+                serviceImplementation="com.bowiesolutions.weaudit.store.WeAuditStore"/>
+
+        <!-- Editor highlight manager: owns all RangeHighlighter lifecycle -->
+        <projectService
+                serviceImplementation="com.bowiesolutions.weaudit.editor.EditorHighlightManager"/>
+
+        <!-- Boundary edit session manager -->
+        <projectService
+                serviceImplementation="com.bowiesolutions.weaudit.boundary.BoundaryEditManager"/>
+
+        <!-- ── Inlay hints (boundary editing) ───────────────────────────── -->
+
+        <codeInsight.declarativeInlayProvider
+                language=""
+                implementationClass="com.bowiesolutions.weaudit.boundary.WeAuditBoundaryInlayProvider"
+                isEnabledByDefault="true"
+                group="OTHER_GROUP"
+                providerId="com.bowiesolutions.weaudit.boundary"/>
+
+        <codeInsight.declarativeInlayActionHandler
+                implementationClass="com.bowiesolutions.weaudit.boundary.BoundaryInlayActionHandler"
+                handlerId="com.bowiesolutions.weaudit.boundary"/>
+
+        <!-- ── Project View decorations ─────────────────────────────────── -->
+
+        <projectViewNodeDecorator
+                implementation="com.bowiesolutions.weaudit.decorator.WeAuditProjectViewDecorator"/>
+
+        <!-- ── Settings UI ───────────────────────────────────────────────── -->
+
+        <applicationConfigurable
+                parentId="tools"
+                instance="com.bowiesolutions.weaudit.settings.WeAuditSettingsConfigurable"
+                id="weaudit.settings"
+                displayName="weAudit"/>
+
+        <!-- ── Notifications ─────────────────────────────────────────────── -->
+
+        <notificationGroup
+                id="weAudit"
+                displayType="BALLOON"
+                key="notification.group.weaudit"/>
+
+        <!-- ── Tool window ───────────────────────────────────────────────── -->
+
+        <toolWindow
+                id="weAudit"
+                anchor="right"
+                factoryClass="com.bowiesolutions.weaudit.toolwindow.WeAuditToolWindowFactory"
+                icon="/icons/weaudit.svg"
+                canCloseContents="false"/>
+
+        <!-- ── Project startup ───────────────────────────────────────────── -->
+
+        <postStartupActivity
+                implementation="com.bowiesolutions.weaudit.WeAuditStartupActivity"/>
+
+    </extensions>
+
+    <!-- ── Project-level message-bus listeners ──────────────────────────── -->
+
+    <projectListeners>
+
+        <!-- Re-apply highlights when an editor tab is opened -->
+        <listener
+                class="com.bowiesolutions.weaudit.editor.EditorOpenListener"
+                topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+
+        <!-- Recompute highlight colors on IDE theme change -->
+        <listener
+                class="com.bowiesolutions.weaudit.editor.ThemeChangeListener"
+                topic="com.intellij.ide.ui.LafManagerListener"/>
+
+        <!-- Reload co-auditor .weaudit files when they change on disk -->
+        <listener
+                class="com.bowiesolutions.weaudit.integration.WeAuditFileWatcher"
+                topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+
+    </projectListeners>
+
+    <!-- ── Actions ──────────────────────────────────────────────────────── -->
+
+    <actions>
+
+        <group id="WeAudit.ActionGroup"
+               text="weAudit"
+               description="weAudit code-review actions"
+               popup="true">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <add-to-group group-id="MainMenu"        anchor="last"/>
+        </group>
+
+        <!-- ── Finding creation ─────────────────────────────────────────── -->
+
+        <!-- Ctrl/Cmd+3: Add selected code as a new Finding -->
+        <action id="WeAudit.AddFinding"
+                class="com.bowiesolutions.weaudit.actions.NewFindingAction"
+                text="New Finding from Selection"
+                description="Bookmark the selected code as a new finding">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="first"/>
+            <keyboard-shortcut first-keystroke="ctrl 3" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta 3" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- Ctrl/Cmd+4: Add selected code as a new Note -->
+        <action id="WeAudit.AddNote"
+                class="com.bowiesolutions.weaudit.actions.NewNoteAction"
+                text="New Note from Selection"
+                description="Bookmark the selected code as a new note">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.AddFinding"/>
+            <keyboard-shortcut first-keystroke="ctrl 4" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta 4" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- Add the current selection as an additional location to an existing finding -->
+        <action id="WeAudit.AddLocationToFinding"
+                class="com.bowiesolutions.weaudit.actions.AddLocationToFindingAction"
+                text="Add Location to Existing Finding"
+                description="Append the selected code region to an existing finding (multi-region)">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.AddNote"/>
+        </action>
+
+        <!-- ── Finding editing ───────────────────────────────────────────── -->
+
+        <!-- Ctrl/Cmd+5: Delete the finding under the cursor -->
+        <action id="WeAudit.DeleteLocationUnderCursor"
+                class="com.bowiesolutions.weaudit.actions.DeleteLocationUnderCursorAction"
+                text="Delete Finding Under Cursor"
+                description="Remove the finding or note at the cursor position">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.AddLocationToFinding"/>
+            <keyboard-shortcut first-keystroke="ctrl 5" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta 5" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- Ctrl/Cmd+6: Rename the finding under the cursor -->
+        <action id="WeAudit.EditEntryUnderCursor"
+                class="com.bowiesolutions.weaudit.actions.EditEntryUnderCursorAction"
+                text="Edit Finding Under Cursor"
+                description="Rename the finding or note at the cursor position">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.DeleteLocationUnderCursor"/>
+            <keyboard-shortcut first-keystroke="ctrl 6" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta 6" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- Ctrl/Cmd+8: Resolve or restore the finding under the cursor -->
+        <action id="WeAudit.ResolveUnderCursor"
+                class="com.bowiesolutions.weaudit.actions.ResolveUnderCursorAction"
+                text="Resolve/Restore Finding Under Cursor"
+                description="Toggle resolved state of the finding or note at the cursor">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.EditEntryUnderCursor"/>
+            <keyboard-shortcut first-keystroke="ctrl 8" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta 8" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- ── Boundary editing ──────────────────────────────────────────── -->
+
+        <!-- Ctrl/Cmd+B: Enter/exit boundary editing mode -->
+        <action id="WeAudit.EditFindingBoundary"
+                class="com.bowiesolutions.weaudit.actions.EditFindingBoundaryAction"
+                text="Edit Finding Boundary"
+                description="Enter boundary editing mode for the finding under the cursor (Ctrl/Cmd+B again or Escape to exit)">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.ResolveUnderCursor"/>
+            <keyboard-shortcut first-keystroke="ctrl B" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta B" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- Escape: Commit and exit boundary editing -->
+        <action id="WeAudit.DoneBoundaryEdit"
+                class="com.bowiesolutions.weaudit.actions.DoneBoundaryEditAction"
+                text="Done Editing Boundary"
+                description="Commit boundary changes and exit editing mode">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.EditFindingBoundary"/>
+            <keyboard-shortcut first-keystroke="ESCAPE" keymap="$default"/>
+        </action>
+
+        <!-- Discard boundary changes without saving -->
+        <action id="WeAudit.CancelBoundaryEdit"
+                class="com.bowiesolutions.weaudit.actions.CancelBoundaryEditAction"
+                text="Cancel Boundary Edit"
+                description="Discard boundary changes and exit editing mode">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.DoneBoundaryEdit"/>
+        </action>
+
+        <!-- Ctrl/Cmd+Up: Expand start boundary upward -->
+        <action id="WeAudit.ExpandStartBoundary"
+                class="com.bowiesolutions.weaudit.actions.ExpandStartBoundaryAction"
+                text="Expand Start Boundary"
+                description="Expand the top boundary of the finding upward by one line">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.CancelBoundaryEdit"/>
+            <keyboard-shortcut first-keystroke="ctrl UP" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta UP" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- Ctrl/Cmd+Shift+Down: Shrink start boundary downward -->
+        <action id="WeAudit.ShrinkStartBoundary"
+                class="com.bowiesolutions.weaudit.actions.ShrinkStartBoundaryAction"
+                text="Shrink Start Boundary"
+                description="Shrink the top boundary of the finding downward by one line">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.ExpandStartBoundary"/>
+            <keyboard-shortcut first-keystroke="ctrl shift DOWN" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta shift DOWN" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- Ctrl/Cmd+Down: Expand end boundary downward -->
+        <action id="WeAudit.ExpandEndBoundary"
+                class="com.bowiesolutions.weaudit.actions.ExpandEndBoundaryAction"
+                text="Expand End Boundary"
+                description="Expand the bottom boundary of the finding downward by one line">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.ShrinkStartBoundary"/>
+            <keyboard-shortcut first-keystroke="ctrl DOWN" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta DOWN" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- Ctrl/Cmd+Shift+Up: Shrink end boundary upward -->
+        <action id="WeAudit.ShrinkEndBoundary"
+                class="com.bowiesolutions.weaudit.actions.ShrinkEndBoundaryAction"
+                text="Shrink End Boundary"
+                description="Shrink the bottom boundary of the finding upward by one line">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.ExpandEndBoundary"/>
+            <keyboard-shortcut first-keystroke="ctrl shift UP" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta shift UP" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- Alt+Up: Move entire boundary up -->
+        <action id="WeAudit.MoveBoundaryUp"
+                class="com.bowiesolutions.weaudit.actions.MoveBoundaryUpAction"
+                text="Move Boundary Up"
+                description="Move the entire finding boundary up by one line">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.ShrinkEndBoundary"/>
+            <keyboard-shortcut first-keystroke="alt UP" keymap="$default"/>
+        </action>
+
+        <!-- Alt+Down: Move entire boundary down -->
+        <action id="WeAudit.MoveBoundaryDown"
+                class="com.bowiesolutions.weaudit.actions.MoveBoundaryDownAction"
+                text="Move Boundary Down"
+                description="Move the entire finding boundary down by one line">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.MoveBoundaryUp"/>
+            <keyboard-shortcut first-keystroke="alt DOWN" keymap="$default"/>
+        </action>
+
+        <!-- ── File review ───────────────────────────────────────────────── -->
+
+        <!-- Ctrl/Cmd+7: Toggle fully-reviewed status for the active file -->
+        <action id="WeAudit.ToggleAudited"
+                class="com.bowiesolutions.weaudit.actions.ToggleAuditedAction"
+                text="Mark Current File As Reviewed"
+                description="Toggle the fully-reviewed highlight on the active file">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.MoveBoundaryDown"/>
+            <keyboard-shortcut first-keystroke="ctrl 7" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta 7" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- Ctrl/Cmd+Shift+7: Mark selected region as reviewed -->
+        <action id="WeAudit.AddPartiallyAudited"
+                class="com.bowiesolutions.weaudit.actions.MarkRegionAsReviewedAction"
+                text="Mark Region As Reviewed"
+                description="Mark the selected region as reviewed">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.ToggleAudited"/>
+            <keyboard-shortcut first-keystroke="ctrl shift 7" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta shift 7" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- Ctrl/Cmd+0: Navigate to next partially-reviewed region -->
+        <action id="WeAudit.NavigateNextPartiallyAuditedRegion"
+                class="com.bowiesolutions.weaudit.actions.NavigateNextPartialAction"
+                text="Navigate to Next Partially Audited Region"
+                description="Cycle through all partially-reviewed regions across all files">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.AddPartiallyAudited"/>
+            <keyboard-shortcut first-keystroke="ctrl 0" keymap="$default"/>
+            <keyboard-shortcut first-keystroke="meta 0" keymap="Mac OS X 10.5+"/>
+        </action>
+
+        <!-- ── Integration ───────────────────────────────────────────────── -->
+
+        <!-- Copy a permanent GitHub/GitLab link to the finding under cursor -->
+        <action id="WeAudit.CopyPermalink"
+                class="com.bowiesolutions.weaudit.actions.CopyPermalinkAction"
+                text="Copy Permalink"
+                description="Copy a permanent GitHub/GitLab link to the finding under the cursor">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.NavigateNextPartiallyAuditedRegion"/>
+        </action>
+
+        <!-- Export all active findings and notes to a Markdown file -->
+        <action id="WeAudit.ExportMarkdown"
+                class="com.bowiesolutions.weaudit.actions.ExportMarkdownAction"
+                text="Export Findings to Markdown"
+                description="Export all active findings and notes to a Markdown report">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="after"
+                          relative-to-action="WeAudit.CopyPermalink"/>
+        </action>
+
+        <!-- ── Display ───────────────────────────────────────────────────── -->
+
+        <!-- Toggle all weAudit highlights on/off globally -->
+        <action id="WeAudit.ToggleHighlighting"
+                class="com.bowiesolutions.weaudit.actions.ToggleHighlightingAction"
+                text="Hide Findings Highlighting"
+                description="Toggle all weAudit highlights on/off">
+            <add-to-group group-id="WeAudit.ActionGroup" anchor="last"/>
+        </action>
+
+    </actions>
+
+</idea-plugin>

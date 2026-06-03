@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Optional descriptor loaded only when the Git4Idea plugin is present.
+    Placed at: src/main/resources/META-INF/git4idea-integration.xml
+
+    This pattern (optional dependency + separate descriptor) is the IntelliJ
+    Platform convention for soft dependencies.  When Git4Idea is absent
+    (e.g. in a bare IntelliJ Platform installation), the classes in
+    GitIntegration.kt are never loaded and permalink features gracefully
+    degrade — the plugin still loads and all non-permalink features work.
+
+    See: https://plugins.jetbrains.com/docs/intellij/plugin-dependencies.html#optional-plugin-dependencies
+-->
+<idea-plugin>
+    <!-- No additional extensions needed here — GitIntegration is called
+         programmatically from CopyPermalinkAction and ExportMarkdownAction.
+         This file exists purely to satisfy the optional dependency declaration. -->
+</idea-plugin>
